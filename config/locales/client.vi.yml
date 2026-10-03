@@ -1,0 +1,16 @@
+vi:
+  js:
+    vip_sepay:
+      title: "VIP"
+    discourse_vip_sepay:
+      admin:
+        title: "VIP SePay"
+        navigation:
+          dashboard: "Tổng quan"
+          description: "Doanh thu, trạng thái thanh toán và vận hành VIP"
+          plans: "Gói VIP"
+          plans_description: "Quản lý giá, ngày và Group của gói VIP"
+          orders: "Đơn hàng"
+          orders_description: "Theo dõi và xử lý đơn thanh toán"
+          members: "Thành viên VIP"
+          members_description: "Quản lý thời hạn và Group của thành viên"
