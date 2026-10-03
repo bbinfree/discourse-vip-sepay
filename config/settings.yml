@@ -1,0 +1,87 @@
+vip_sepay_enabled:
+  default: false
+  client: true
+  type: bool
+
+vip_sepay_bank_name:
+  default: ""
+  type: string
+
+vip_sepay_bank_bin:
+  default: ""
+  type: string
+
+vip_sepay_bank_template:
+  default: "compact2"
+  type: string
+
+vip_sepay_account_number:
+  default: ""
+  type: string
+
+vip_sepay_account_holder:
+  default: ""
+  type: string
+
+vip_sepay_payment_prefix:
+  default: "VIP"
+  type: string
+
+vip_sepay_webhook_secret:
+  default: ""
+  type: string
+  secret: true
+
+vip_sepay_webhook_tolerance_seconds:
+  default: 300
+  type: integer
+
+vip_sepay_order_expiry_minutes:
+  default: 15
+  type: integer
+
+vip_sepay_extend_existing:
+  default: true
+  type: bool
+
+vip_sepay_replace_different_group:
+  default: true
+  type: bool
+
+vip_sepay_require_exact_amount:
+  default: true
+  type: bool
+
+vip_sepay_cleanup_paid_orders_days:
+  default: 365
+  type: integer
+
+vip_sepay_cleanup_audit_days:
+  default: 180
+  type: integer
+
+
+vip_sepay_reconciliation_enabled:
+  default: false
+  type: bool
+
+vip_sepay_api_token:
+  default: ""
+  type: string
+  secret: true
+
+vip_sepay_api_base_url:
+  default: "https://userapi.sepay.vn/v2"
+  type: string
+
+vip_sepay_reconciliation_days:
+  default: 2
+  type: integer
+
+vip_sepay_reconciliation_per_page:
+  default: 100
+  type: integer
+
+vip_sepay_http_timeout_seconds:
+  default: 10
+  type: integer
