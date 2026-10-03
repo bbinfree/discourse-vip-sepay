@@ -1,0 +1,168 @@
+name: Discourse Full Integration Test
+
+on:
+  push:
+    branches:
+      - test-2.3.0
+  workflow_dispatch:
+
+jobs:
+  discourse-integration:
+    name: Discourse + VIP SePay
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: vip-sepay
+
+      - name: Checkout Discourse
+        uses: actions/checkout@v4
+        with:
+          repository: discourse/discourse
+          path: discourse
+          fetch-depth: 1
+
+      - name: Show versions
+        working-directory: discourse
+        run: |
+          echo "Discourse commit:"
+          git rev-parse HEAD
+
+          echo "Plugin commit:"
+          cd ../vip-sepay
+          git rev-parse HEAD
+
+      - name: Install Docker development dependencies
+        run: |
+          docker --version
+          docker compose version || true
+
+      - name: Install plugin into Discourse
+        run: |
+          rm -rf discourse/plugins/discourse-vip-sepay
+
+          cp -a vip-sepay discourse/plugins/discourse-vip-sepay
+
+          test -f discourse/plugins/discourse-vip-sepay/plugin.rb
+
+          echo "Plugin installed:"
+          ls -la discourse/plugins/discourse-vip-sepay
+
+      - name: Prepare Discourse development environment
+        working-directory: discourse
+        run: |
+          chmod +x d/boot_dev
+          chmod +x d/shutdown_dev
+
+          ./d/boot_dev --help || true
+
+      - name: Boot Discourse
+        working-directory: discourse
+        env:
+          DISCOURSE_DB_HOST: postgres
+        run: |
+          ./d/boot_dev --init
+
+      - name: Check Discourse container
+        working-directory: discourse
+        run: |
+          docker ps -a
+
+      - name: Check plugin is loaded
+        working-directory: discourse
+        run: |
+          ./d/shell -c '
+            test -f /src/plugins/discourse-vip-sepay/plugin.rb
+            echo "Plugin source exists inside Discourse"
+          '
+
+      - name: Run database migrations
+        working-directory: discourse
+        run: |
+          ./d/rake db:migrate RAILS_ENV=development
+
+      - name: Check VIP SePay settings
+        working-directory: discourse
+        run: |
+          ./d/rails runner '
+            puts "Checking VIP SePay settings..."
+
+            if SiteSetting.respond_to?(:vip_sepay_enabled)
+              puts "vip_sepay_enabled: #{SiteSetting.vip_sepay_enabled.inspect}"
+            else
+              abort "ERROR: vip_sepay_enabled was not registered by Discourse"
+            end
+
+            required = %w[
+              vip_sepay_enabled
+              vip_sepay_bank_name
+              vip_sepay_bank_bin
+              vip_sepay_bank_template
+              vip_sepay_account_number
+              vip_sepay_account_holder
+              vip_sepay_payment_prefix
+              vip_sepay_webhook_secret
+              vip_sepay_webhook_tolerance_seconds
+              vip_sepay_order_expiry_minutes
+              vip_sepay_extend_existing
+              vip_sepay_replace_different_group
+              vip_sepay_require_exact_amount
+              vip_sepay_cleanup_paid_orders_days
+              vip_sepay_cleanup_audit_days
+              vip_sepay_reconciliation_enabled
+              vip_sepay_api_token
+              vip_sepay_api_base_url
+              vip_sepay_reconciliation_days
+              vip_sepay_reconciliation_per_page
+              vip_sepay_http_timeout_seconds
+            ]
+
+            required.each do |name|
+              abort "Missing setting: #{name}" unless SiteSetting.respond_to?(name)
+              puts "OK: #{name}"
+            end
+          '
+
+      - name: Check plugin constants
+        working-directory: discourse
+        run: |
+          ./d/rails runner '
+            puts "Checking plugin constants..."
+
+            begin
+              puts DiscourseVipSepay::PLUGIN_NAME
+              puts DiscourseVipSepay::VERSION
+            rescue => e
+              warn e.full_message
+              exit 1
+            end
+          '
+
+      - name: Run plugin RSpec
+        working-directory: discourse
+        run: |
+          ./d/rake plugin:spec["discourse-vip-sepay"]
+
+      - name: Check Rails routes
+        working-directory: discourse
+        run: |
+          ./d/rails routes > /tmp/discourse-routes.txt
+
+          grep -i "vip" /tmp/discourse-routes.txt || true
+
+      - name: Test Discourse boot
+        working-directory: discourse
+        run: |
+          ./d/rails runner '
+            puts "Rails environment: #{Rails.env}"
+            puts "Discourse boot: OK"
+          '
+
+      - name: Shutdown Discourse
+        if: always()
+        working-directory: discourse
+        run: |
+          ./d/shutdown_dev || true
