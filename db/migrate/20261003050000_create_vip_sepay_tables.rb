@@ -12,6 +12,7 @@ class CreateVipSepayTables < ActiveRecord::Migration[7.0]
       t.integer :position, null: false, default: 0
       t.timestamps
     end
+
     add_index :vip_sepay_plans, :group_id
     add_index :vip_sepay_plans, [:active, :position]
 
@@ -29,9 +30,13 @@ class CreateVipSepayTables < ActiveRecord::Migration[7.0]
       t.text :raw_payload
       t.timestamps
     end
+
     add_index :vip_sepay_orders, :order_code, unique: true
     add_index :vip_sepay_orders, [:user_id, :status]
-    add_index :vip_sepay_orders, :sepay_transaction_id, unique: true, where: "sepay_transaction_id IS NOT NULL"
+    add_index :vip_sepay_orders,
+              :sepay_transaction_id,
+              unique: true,
+              where: "sepay_transaction_id IS NOT NULL"
     add_index :vip_sepay_orders, :expires_at
 
     create_table :vip_sepay_subscriptions do |t|
@@ -46,10 +51,15 @@ class CreateVipSepayTables < ActiveRecord::Migration[7.0]
       t.datetime :cancelled_at
       t.timestamps
     end
+
     add_index :vip_sepay_subscriptions, [:user_id, :status]
     add_index :vip_sepay_subscriptions, :expires_at
     add_index :vip_sepay_subscriptions, :order_id
-    add_index :vip_sepay_subscriptions, [:user_id, :group_id, :status]
+
+    # Custom short name because PostgreSQL index names are limited to 63 characters.
+    add_index :vip_sepay_subscriptions,
+              [:user_id, :group_id, :status],
+              name: "idx_vip_sepay_sub_user_group_status"
 
     create_table :vip_sepay_transactions do |t|
       t.string :sepay_transaction_id, null: false
@@ -66,6 +76,7 @@ class CreateVipSepayTables < ActiveRecord::Migration[7.0]
       t.string :status, null: false, default: "received"
       t.timestamps
     end
+
     add_index :vip_sepay_transactions, :sepay_transaction_id, unique: true
     add_index :vip_sepay_transactions, :order_id
     add_index :vip_sepay_transactions, :order_code
@@ -78,6 +89,7 @@ class CreateVipSepayTables < ActiveRecord::Migration[7.0]
       t.text :details
       t.timestamps
     end
+
     add_index :vip_sepay_audit_logs, :created_at
     add_index :vip_sepay_audit_logs, [:resource_type, :resource_id]
   end
