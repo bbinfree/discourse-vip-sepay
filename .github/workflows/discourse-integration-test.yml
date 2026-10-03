@@ -43,18 +43,29 @@ jobs:
 
     env:
       RAILS_ENV: test
+
+      # PostgreSQL
       DISCOURSE_DB_HOST: postgres
       DISCOURSE_DB_PORT: 5432
       DISCOURSE_DB_NAME: discourse_test
       DISCOURSE_DB_USERNAME: discourse
       DISCOURSE_DB_PASSWORD: discourse
+      DISCOURSE_DB_SOCKET: ""
+
+      # Redis
       DISCOURSE_REDIS_HOST: redis
       DISCOURSE_REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+
+      # Plugin loading
+      LOAD_PLUGINS: "1"
 
     steps:
+
       # ============================================================
-      # 1. CHECKOUT PLUGIN
+      # 1. CHECKOUT VIP SEPAY PLUGIN
       # ============================================================
+
       - name: Checkout VIP SePay plugin
         uses: actions/checkout@v4
         with:
@@ -63,6 +74,7 @@ jobs:
       # ============================================================
       # 2. CHECKOUT DISCOURSE SOURCE
       # ============================================================
+
       - name: Checkout Discourse
         uses: actions/checkout@v4
         with:
@@ -73,6 +85,7 @@ jobs:
       # ============================================================
       # 3. SHOW VERSIONS
       # ============================================================
+
       - name: Show versions
         shell: bash
         run: |
@@ -96,6 +109,7 @@ jobs:
       # ============================================================
       # 4. INSTALL PLUGIN
       # ============================================================
+
       - name: Install VIP SePay plugin
         shell: bash
         run: |
@@ -114,8 +128,9 @@ jobs:
           ls -la discourse/plugins/discourse-vip-sepay
 
       # ============================================================
-      # 5. CONFIGURE BUNDLE
+      # 5. CONFIGURE RUBY BUNDLE
       # ============================================================
+
       - name: Configure Ruby bundle
         working-directory: discourse
         shell: bash
@@ -128,6 +143,7 @@ jobs:
       # ============================================================
       # 6. INSTALL RUBY DEPENDENCIES
       # ============================================================
+
       - name: Install gems
         working-directory: discourse
         shell: bash
@@ -137,50 +153,134 @@ jobs:
           bundle install --jobs 4
 
       # ============================================================
-      # 7. CHECK DATABASE
+      # 7. CHECK NETWORK / POSTGRESQL
       # ============================================================
+
       - name: Check PostgreSQL
         shell: bash
         run: |
           set -eux
 
+          echo "Checking PostgreSQL hostname..."
+
+          getent hosts postgres
+
+          echo
+          echo "Checking PostgreSQL availability..."
+
           pg_isready \
-            -h "$DISCOURSE_DB_HOST" \
-            -p "$DISCOURSE_DB_PORT" \
-            -U "$DISCOURSE_DB_USERNAME"
+            -h postgres \
+            -p 5432 \
+            -U discourse
+
+          echo
+          echo "Testing PostgreSQL connection..."
+
+          PGPASSWORD=discourse \
+          psql \
+            -h postgres \
+            -p 5432 \
+            -U discourse \
+            -d postgres \
+            -c "SELECT version();"
 
       # ============================================================
-      # 8. CREATE DATABASE
+      # 8. CHECK REDIS
       # ============================================================
+
+      - name: Check Redis
+        shell: bash
+        run: |
+          set -eux
+
+          echo "Checking Redis hostname..."
+
+          getent hosts redis
+
+          echo
+          echo "Testing Redis connection..."
+
+          redis-cli \
+            -h redis \
+            -p 6379 \
+            ping
+
+      # ============================================================
+      # 9. CREATE TEST DATABASE CONFIG
+      # ============================================================
+
+      - name: Configure Discourse test database
+        working-directory: discourse
+        shell: bash
+        run: |
+          set -eux
+
+          cat > config/database.yml <<'YAML'
+          test:
+            adapter: postgresql
+            encoding: unicode
+            database: discourse_test
+            username: discourse
+            password: discourse
+            host: postgres
+            port: 5432
+            pool: 10
+            timeout: 5000
+
+          development:
+            adapter: postgresql
+            encoding: unicode
+            database: discourse_development
+            username: discourse
+            password: discourse
+            host: postgres
+            port: 5432
+            pool: 10
+            timeout: 5000
+          YAML
+
+          echo
+          echo "======================================"
+          echo "config/database.yml"
+          echo "======================================"
+
+          cat config/database.yml
+
+      # ============================================================
+      # 10. CREATE DATABASE
+      # ============================================================
+
       - name: Create database
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rake db:create
+          RAILS_ENV=test bundle exec rake db:create
 
       # ============================================================
-      # 9. RUN DATABASE MIGRATIONS
+      # 11. RUN DATABASE MIGRATIONS
       # ============================================================
+
       - name: Run Discourse migrations
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rake db:migrate
+          RAILS_ENV=test bundle exec rake db:migrate
 
       # ============================================================
-      # 10. CHECK VIP SEPAY TABLES
+      # 12. CHECK VIP SEPAY TABLES
       # ============================================================
+
       - name: Check VIP SePay database tables
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rails runner '
+          RAILS_ENV=test bundle exec rails runner '
             required_tables = %w[
               vip_sepay_plans
               vip_sepay_orders
@@ -196,15 +296,16 @@ jobs:
           '
 
       # ============================================================
-      # 11. CHECK SITE SETTINGS
+      # 13. CHECK SITE SETTINGS
       # ============================================================
+
       - name: Check VIP SePay settings
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rails runner '
+          RAILS_ENV=test bundle exec rails runner '
             required = %w[
               vip_sepay_enabled
               vip_sepay_bank_name
@@ -243,15 +344,16 @@ jobs:
           '
 
       # ============================================================
-      # 12. CHECK PLUGIN CONSTANTS
+      # 14. CHECK PLUGIN CONSTANTS
       # ============================================================
+
       - name: Check plugin boot
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rails runner '
+          RAILS_ENV=test bundle exec rails runner '
             abort "DiscourseVipSepay module missing" unless defined?(DiscourseVipSepay)
 
             puts "PLUGIN_NAME=#{DiscourseVipSepay::PLUGIN_NAME}"
@@ -261,56 +363,65 @@ jobs:
           '
 
       # ============================================================
-      # 13. CHECK ROUTES
+      # 15. CHECK ROUTES
       # ============================================================
+
       - name: Check VIP SePay routes
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rails routes > /tmp/routes.txt
+          RAILS_ENV=test bundle exec rails routes > /tmp/routes.txt
+
+          echo "======================================"
+          echo "VIP SePay routes"
+          echo "======================================"
 
           grep -i "vip" /tmp/routes.txt || true
 
+          echo
           echo "Routes loaded successfully"
 
       # ============================================================
-      # 14. RUN PLUGIN RSpec
+      # 16. RUN VIP SEPAY RSpec
       # ============================================================
+
       - name: Run VIP SePay RSpec
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rake plugin:spec["discourse-vip-sepay"]
+          RAILS_ENV=test bundle exec rake plugin:spec["discourse-vip-sepay"]
 
       # ============================================================
-      # 15. FULL RAILS BOOT
+      # 17. FULL RAILS BOOT
       # ============================================================
+
       - name: Test full Rails boot
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rails runner '
+          RAILS_ENV=test bundle exec rails runner '
             puts "Rails environment: #{Rails.env}"
             puts "Rails version: #{Rails.version}"
             puts "Discourse Rails boot: OK"
           '
 
       # ============================================================
-      # 16. FINAL DATABASE CHECK
+      # 18. FINAL INTEGRATION CHECK
       # ============================================================
+
       - name: Final integration check
         working-directory: discourse
         shell: bash
         run: |
           set -eux
 
-          bundle exec rails runner '
+          RAILS_ENV=test bundle exec rails runner '
             puts
             puts "=========================================="
             puts " DISCOURSE + VIP SEPAY INTEGRATION PASS "
@@ -322,6 +433,7 @@ jobs:
 
             puts
             puts "Database tables:"
+
             %w[
               vip_sepay_plans
               vip_sepay_orders
