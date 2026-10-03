@@ -1,0 +1,162 @@
+name: Discourse VIP SePay - Test
+
+on:
+  push:
+    branches:
+      - test-2.3.0
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    name: Validate plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: false
+
+      - name: Check plugin structure
+        shell: bash
+        run: |
+          set -e
+
+          test -f plugin.rb
+          test -f config/settings.yml
+          test -d app
+          test -d config
+          test -d db/migrate
+          test -d lib
+          test -d spec
+
+          echo "Plugin structure: OK"
+
+      - name: Check Ruby syntax
+        shell: bash
+        run: |
+          set -e
+
+          find . \
+            -type f \
+            -name "*.rb" \
+            -not -path "./.git/*" \
+            -print0 |
+          xargs -0 -n1 ruby -c
+
+          echo "Ruby syntax: OK"
+
+      - name: Check YAML
+        shell: bash
+        run: |
+          ruby -ryaml -e '
+            Dir["**/*.yml", "**/*.yaml"].each do |file|
+              next if file.start_with?(".git/")
+              YAML.load_file(file)
+              puts "OK: #{file}"
+            end
+          '
+
+          echo "YAML: OK"
+
+      - name: Check settings.yml
+        shell: bash
+        run: |
+          ruby -ryaml -e '
+            data = YAML.load_file("config/settings.yml")
+
+            abort "settings.yml is not a Hash" unless data.is_a?(Hash)
+
+            required = %w[
+              vip_sepay_enabled
+              vip_sepay_bank_name
+              vip_sepay_bank_bin
+              vip_sepay_bank_template
+              vip_sepay_account_number
+              vip_sepay_account_holder
+              vip_sepay_payment_prefix
+              vip_sepay_webhook_secret
+              vip_sepay_webhook_tolerance_seconds
+              vip_sepay_order_expiry_minutes
+              vip_sepay_extend_existing
+              vip_sepay_replace_different_group
+              vip_sepay_require_exact_amount
+              vip_sepay_cleanup_paid_orders_days
+              vip_sepay_cleanup_audit_days
+              vip_sepay_reconciliation_enabled
+              vip_sepay_api_token
+              vip_sepay_api_base_url
+              vip_sepay_reconciliation_days
+              vip_sepay_reconciliation_per_page
+              vip_sepay_http_timeout_seconds
+            ]
+
+            missing = required.reject { |key| data.key?(key) }
+
+            abort "Missing settings: #{missing.join(", ")}" unless missing.empty?
+
+            puts "All VIP SePay settings: OK"
+          '
+
+      - name: Check PostgreSQL index names
+        shell: bash
+        run: |
+          ruby -e '
+            Dir["db/migrate/*.rb"].each do |file|
+              File.read(file).scan(/name:\s*["'\'']([^"'\'']+)["'\'']/).flatten.each do |name|
+                abort "Index name too long (#{name.length}): #{name}" if name.length > 63
+              end
+            end
+          '
+
+          echo "PostgreSQL index names: OK"
+
+      - name: Check plugin setting references
+        shell: bash
+        run: |
+          set -e
+
+          grep -Rni "vip_sepay_enabled" \
+            plugin.rb \
+            config \
+            app \
+            lib \
+            spec \
+            >/tmp/vip-setting-references.txt || true
+
+          test -s /tmp/vip-setting-references.txt
+
+          echo "vip_sepay_enabled references found:"
+          cat /tmp/vip-setting-references.txt
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -e
+
+          if command -v node >/dev/null 2>&1; then
+            find . \
+              -type f \
+              \( -name "*.js" -o -name "*.mjs" \) \
+              -not -path "./.git/*" \
+              -print0 |
+            while IFS= read -r -d "" file; do
+              node --check "$file"
+            done
+
+            echo "JavaScript syntax: OK"
+          else
+            echo "Node.js unavailable"
+            exit 1
+          fi
+
+      - name: Final result
+        run: |
+          echo "======================================"
+          echo "Discourse VIP SePay validation PASSED"
+          echo "======================================"
